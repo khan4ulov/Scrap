@@ -1,0 +1,109 @@
+Yellow Pages UAE Scraper
+This Python script scrapes restaurant information from the Yellow Pages UAE website and stores it in an Excel file.
+
+A. Prerequisites
+1. Python 3.x installed on your system.
+2. Chrome web browser installed.
+3. Chrome WebDriver installed and added to your system's PATH. You can download it from here.
+
+B. Installation
+1. Copy or download this Code to your local machine.
+2. Navigate to the project directory in your terminal.
+3. Install the required Python packages using pip.
+
+C. Run the code 
+1.python yellow_pages_scraper.py
+2..Wait for the script to scrape the data. It will create an Excel file named restaurant_data.xlsx in the project directory.
+
+D. Assumptions
+1.The script assumes that the structure of the Yellow Pages UAE website remains consistent during scraping.
+2.Missing values such as city, location detail, P.O. Box, or products/services are replaced with "n/a" in the Excel file.
+
+E. Script
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+import time
+from bs4 import BeautifulSoup
+import re
+from openpyxl import Workbook
+
+# Initialize the webdriver (make sure you have the appropriate driver for your browser)
+driver = webdriver.Chrome()
+
+# Lists to store restaurant information, city names, location details, and P.O. Box numbers
+restaurant_info = []
+city_names = []
+location_details = []
+pobox_numbers = []
+products_and_services = []
+
+# Loop through first 5 pages (as per the provided range)
+for page_num in range(1, 6):   #increase the page number to scrape more data
+    # Construct the URL for each page
+    url = f"https://www.yellowpages-uae.com/uae/restaurants?page={page_num}"
+    driver.get(url)
+
+    # Wait for the page to load
+    time.sleep(10)
+
+    # Find all the P.O. Box elements on the page
+    pobox_elements = driver.find_elements(By.XPATH, "//span[@class='pobox']")
+    pobox_numbers.extend([pobox_element.text.strip() if pobox_element else "n/a" for pobox_element in pobox_elements])
+
+    # Find all location elements on the page
+    location_elements = driver.find_elements(By.CSS_SELECTOR, "span.location")
+    location_details.extend([location_element.find_element(By.CSS_SELECTOR, "span[itemprop='streetAddress']").text.strip() if location_element else "n/a" for location_element in location_elements])
+
+    # Find all city elements on the page
+    city_elements = driver.find_elements(By.CSS_SELECTOR, "span.locationCity")
+    city_names.extend([city_element.find_element(By.CSS_SELECTOR, "strong[itemprop='addressLocality']").text.strip() if city_element else "n/a" for city_element in city_elements])
+
+    # Get the HTML content of the page
+    html = driver.page_source
+
+    # Parse the HTML content with BeautifulSoup
+    soup = BeautifulSoup(html, 'html.parser')
+
+    # Find all elements with class "col-md-10" containing restaurant information
+    restaurant_elements = soup.find_all('div', class_='col-md-10')
+
+    # Extract restaurant names, phone numbers, and mobile numbers
+    for restaurant in restaurant_elements:
+        name_element = restaurant.find('h2', class_='cmp_name')
+        phone_element = restaurant.find('span', class_='phone')
+
+        if name_element and phone_element:
+            name = name_element.text.strip()
+            phone = re.search(r'\d{2}-\d{7}', phone_element.text)
+
+            if phone:
+                restaurant_info.append({
+                    'name': name,
+                    'phone': phone.group(),
+                })
+
+    # Find all the elements with class 'row categories productslist' which contain products and services
+    products_list_elements = driver.find_elements(By.CLASS_NAME, 'productslist')
+
+    # Extract the text containing products and services for each element
+    products_and_services.extend([products_list_element.text.strip() if products_list_element else "n/a" for products_list_element in products_list_elements])
+
+# Close the webdriver
+driver.quit()
+
+# Create a new Excel workbook
+wb = Workbook()
+
+# Select the active worksheet
+ws = wb.active
+
+# Set column headers
+ws.append(['City', 'Location Detail', 'Name', 'Phone', 'P.O. Box', 'Products and Services'])
+
+# Write data to the worksheet
+for restaurant, city, location_detail, pobox_number, products_services in zip(restaurant_info, city_names, location_details, pobox_numbers, products_and_services):
+    ws.append([city, location_detail, restaurant.get('name', 'n/a'), restaurant.get('phone', 'n/a'), pobox_number, products_services])
+
+# Save the workbook
+wb.save("restaurant_data.xlsx")
+
